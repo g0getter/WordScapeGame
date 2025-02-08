@@ -19,13 +19,8 @@ class ViewController: UIViewController, ReactorKit.View {
 
     private var animator: UIViewPropertyAnimator?
     
-    private let wordView = UIView().then {
-        $0.backgroundColor = .yellow
-    }
+    private let wordView = WordView(text: "apple")
     
-    private let wordLabel = UILabel().then {
-        $0.text = "apple"
-    }
     private let wordLanes = UIView().then {
         $0.backgroundColor = .lightGray
     }
@@ -62,6 +57,7 @@ class ViewController: UIViewController, ReactorKit.View {
         addSubviews()
         setupConstraints()
         setupAnimation()
+        setupTapGesture(to: wordView)
         
         reactor = ViewReactor()
         guard let reactor = reactor else { return }
@@ -89,7 +85,6 @@ extension ViewController {
         ]
             .forEach { wordLanes.addSubview($0) }
         
-        wordView.addSubview(wordLabel)
         missedWordsBox.addSubview(missedWordsContent)
     }
     
@@ -140,9 +135,6 @@ extension ViewController {
         wordView.snp.makeConstraints {
             $0.top.leading.equalToSuperview()
         }
-        wordLabel.snp.makeConstraints {
-            $0.edges.equalToSuperview().inset(3)
-        }
         
         missedWordsContent.snp.makeConstraints {
             $0.top.leading.trailing.equalToSuperview()
@@ -154,7 +146,7 @@ extension ViewController {
 // MARK: - Animations
 extension ViewController {
     private func setupAnimation() {
-        animator = UIViewPropertyAnimator(duration: 0.5, curve: .linear, animations: { [weak self] in
+        animator = UIViewPropertyAnimator(duration: 2.0/*0.5*/, curve: .linear, animations: { [weak self] in
             guard let self = self else { return }
             self.wordView.snp.remakeConstraints {
                 $0.top.equalToSuperview()
@@ -198,6 +190,29 @@ extension ViewController {
         
         // 3. 새로운 애니메이션을 다시 설정
         setupAnimation()
+    }
+    
+    @objc private func cancelAnimation(_ gesture: UITapGestureRecognizer) {
+        guard let tappedWordView = gesture.view as? WordView else { return }
+        
+        animator?.stopAnimation(true) // 애니메이션 즉시 중단
+        animator?.finishAnimation(at: .current) // 현재 상태에서 멈춤 FIXME: 없어지도록
+        
+        // 원래 위치로 리셋
+        wordView.snp.remakeConstraints {
+            $0.top.leading.equalToSuperview()
+        }
+        
+        reactor?.action.onNext(.captured(tappedWordView.text))
+        wordView.superview?.layoutIfNeeded()
+    }
+}
+
+
+extension ViewController {
+    private func setupTapGesture(to wordView: UIView) {
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(cancelAnimation(_:)))
+        wordView.addGestureRecognizer(tapGesture)
     }
 }
 
@@ -246,6 +261,15 @@ extension ViewController {
             .withUnretained(self)
             .subscribe(onNext: { owner, word in
                 owner.addMissedWord(word)
+            }).disposed(by: disposeBag)
+        
+        reactor.state
+            .compactMap { $0.newCapturedWord }
+            .asObservable()
+            .withUnretained(self)
+            .subscribe(onNext: { owner, word in
+//                owner.addCapturedWord(word)
+                print(word)
             }).disposed(by: disposeBag)
     }
 }
