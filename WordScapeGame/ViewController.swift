@@ -35,12 +35,18 @@ class ViewController: UIViewController, ReactorKit.View {
     private let missedWordsLabel = UILabel().then {
         $0.text = "Missed Words"
     }
+    
     private let capturedWordsBox = UIView().then {
         $0.backgroundColor = .blue.withAlphaComponent(0.5)
     }
+    
     private let missedWordsBox = UIView().then {
         $0.backgroundColor = .red.withAlphaComponent(0.5)
     }
+    private let missedWordsContent = UIStackView().then {
+        $0.axis = .vertical
+    }
+    
     private let startButton = UIButton().then {
         $0.setTitle("Start", for: .normal)
         $0.backgroundColor = .green
@@ -84,7 +90,7 @@ extension ViewController {
             .forEach { wordLanes.addSubview($0) }
         
         wordView.addSubview(wordLabel)
-        
+        missedWordsBox.addSubview(missedWordsContent)
     }
     
     private func setupConstraints() {
@@ -137,6 +143,11 @@ extension ViewController {
         wordLabel.snp.makeConstraints {
             $0.edges.equalToSuperview().inset(3)
         }
+        
+        missedWordsContent.snp.makeConstraints {
+            $0.top.leading.trailing.equalToSuperview()
+            $0.bottom.lessThanOrEqualToSuperview()
+        }
     }
 }
 
@@ -173,6 +184,9 @@ extension ViewController {
     }
     
     private func resetAnimation() {
+        // FIXME: 처음에 reset 눌렀을 때 에러나지 않도록
+//        guard [.active, .stopped].contains(animator?.state) else { return }
+        
         // 1. 애니메이션 정지 및 초기화
         animator?.stopAnimation(true)
         animator?.finishAnimation(at: .start) // 애니메이션의 처음 상태로 되돌림
@@ -220,18 +234,18 @@ extension ViewController {
                     owner.startAnimation()
                 case .reset:
                     owner.resetAnimation()
+                    owner.resetMissedWords()
                 default:
                     break
                 }
             }).disposed(by: disposeBag)
         
         reactor.state
-            .map { $0.missedWords }
+            .compactMap { $0.newMissedWord }
             .asObservable()
-            .distinctUntilChanged()
             .withUnretained(self)
-            .subscribe(onNext: { owner, words in
-                owner.setMissedWords(words)
+            .subscribe(onNext: { owner, word in
+                owner.addMissedWord(word)
             }).disposed(by: disposeBag)
     }
 }
@@ -239,8 +253,20 @@ extension ViewController {
 
 // MARK: - Manage boxes
 extension ViewController {
-    private func setMissedWords(_ words: [String]) {
-//        missedWordsBox.append(word)
-        print(words)
+    private func resetMissedWords() {
+        guard !missedWordsContent.arrangedSubviews.isEmpty else { return }
+        missedWordsContent.arrangedSubviews.forEach {
+            missedWordsContent.removeArrangedSubview($0)
+            $0.removeFromSuperview()
+        }
+    }
+    
+    private func addMissedWord(_ word: String) {
+        let label = UILabel().then {
+            $0.text = word
+        }
+        
+        missedWordsContent.addArrangedSubview(label)
+        print(word)
     }
 }

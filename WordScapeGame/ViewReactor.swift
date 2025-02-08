@@ -9,6 +9,7 @@ import ReactorKit
 
 class ViewReactor: Reactor {
     let initialState = State(gameState: .initial)
+    private var missedWords: [String] = [] // may not be used
     
     enum Action {
         case startButtonTapped
@@ -23,7 +24,7 @@ class ViewReactor: Reactor {
     }
     
     struct State {
-        var missedWords: [String] = []
+        var newMissedWord: String?
         var gameState: GameState
     }
     
@@ -43,11 +44,12 @@ class ViewReactor: Reactor {
         switch mutation {
         case .startButtonTapped:
             newState.gameState = .start
+            newState.newMissedWord = nil
         case .resetButtonTapped:
             newState.gameState = .reset
-            newState.missedWords = []
+            newState.newMissedWord = nil
         case let .missed(word):
-            newState.missedWords.append(word)
+            newState.newMissedWord = word
         default:
             break
         }
