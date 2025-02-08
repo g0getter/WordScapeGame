@@ -138,11 +138,6 @@ extension ViewController {
             $0.edges.equalToSuperview().inset(3)
         }
     }
-    
-//    private func bindAction() {
-//        startButton.addTarget(self, action: #selector(start), for: .touchUpInside)
-//        resetButton.addTarget(self, action: #selector(reset), for: .touchUpInside)
-//    }
 }
 
 // MARK: - Animations
@@ -157,6 +152,20 @@ extension ViewController {
             self.wordView.superview?.layoutIfNeeded() // 변경된 레이아웃 즉시 적용
             
         })
+        
+        animator?.addCompletion { [weak self] position in
+            guard let self = self else { return }
+            switch position {
+            case .start:
+                print("애니메이션이 시작 지점에서 종료되었습니다.")
+            case .end:
+                self.reactor?.action.onNext(.missed("apple")) // FIXME: "apple"
+            case .current:
+                print("애니메이션이 중간 지점에서 종료되었습니다.")
+            @unknown default:
+                print("알 수 없는 종료 상태")
+            }
+        }
     }
     
     private func startAnimation() {
@@ -215,5 +224,23 @@ extension ViewController {
                     break
                 }
             }).disposed(by: disposeBag)
+        
+        reactor.state
+            .map { $0.missedWords }
+            .asObservable()
+            .distinctUntilChanged()
+            .withUnretained(self)
+            .subscribe(onNext: { owner, words in
+                owner.setMissedWords(words)
+            }).disposed(by: disposeBag)
+    }
+}
+
+
+// MARK: - Manage boxes
+extension ViewController {
+    private func setMissedWords(_ words: [String]) {
+//        missedWordsBox.append(word)
+        print(words)
     }
 }

@@ -13,14 +13,17 @@ class ViewReactor: Reactor {
     enum Action {
         case startButtonTapped
         case resetButtonTapped
+        case missed(String)
     }
     
     enum Mutation {
         case startButtonTapped
         case resetButtonTapped
+        case missed(String)
     }
     
     struct State {
+        var missedWords: [String] = []
         var gameState: GameState
     }
     
@@ -30,6 +33,8 @@ class ViewReactor: Reactor {
             return Observable.just(Mutation.startButtonTapped)
         case .resetButtonTapped:
             return Observable.just(Mutation.resetButtonTapped)
+        case let .missed(word):
+            return Observable.just(Mutation.missed(word))
         }
     }
     
@@ -40,6 +45,9 @@ class ViewReactor: Reactor {
             newState.gameState = .start
         case .resetButtonTapped:
             newState.gameState = .reset
+            newState.missedWords = []
+        case let .missed(word):
+            newState.missedWords.append(word)
         default:
             break
         }
@@ -52,6 +60,6 @@ enum GameState: Equatable {
     case start
     case reset
     case end // may not be used
-    case captured(String)
-    case missed(String)
+//    case captured(String)
+//    case missed(String)
 }
