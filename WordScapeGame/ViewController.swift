@@ -8,8 +8,14 @@
 import UIKit
 import SnapKit
 import Then
+import ReactorKit
+import RxSwift // to use ReactorKit
+import RxCocoa // to bind a button tap to reactor action (emit reactor action using map
 
-class ViewController: UIViewController {
+class ViewController: UIViewController, ReactorKit.View {
+
+    var disposeBag = DisposeBag()
+    var reactor: ViewReactor?
 
     private var animator: UIViewPropertyAnimator?
     
@@ -50,8 +56,10 @@ class ViewController: UIViewController {
         addSubviews()
         setupConstraints()
         setupAnimation()
-        bindAction()
         
+        reactor = ViewReactor()
+        guard let reactor = reactor else { return }
+        bind(reactor: reactor)
     }
 
 
@@ -131,10 +139,10 @@ extension ViewController {
         }
     }
     
-    private func bindAction() {
-        startButton.addTarget(self, action: #selector(start), for: .touchUpInside)
-        resetButton.addTarget(self, action: #selector(reset), for: .touchUpInside)
-    }
+//    private func bindAction() {
+//        startButton.addTarget(self, action: #selector(start), for: .touchUpInside)
+//        resetButton.addTarget(self, action: #selector(reset), for: .touchUpInside)
+//    }
 }
 
 // MARK: - Animations
@@ -151,11 +159,11 @@ extension ViewController {
         })
     }
     
-    @objc private func start() {
+    private func startAnimation() {
         animator?.startAnimation()
     }
     
-    @objc func reset() {
+    private func resetAnimation() {
         // 1. 애니메이션 정지 및 초기화
         animator?.stopAnimation(true)
         animator?.finishAnimation(at: .start) // 애니메이션의 처음 상태로 되돌림
@@ -170,3 +178,42 @@ extension ViewController {
     }
 }
 
+// Reactor
+extension ViewController {
+    func bind(reactor: ViewReactor) {
+        bindAction(reactor)
+        bindState(reactor)
+    }
+    
+    private func bindAction(_ reactor: ViewReactor) {
+
+        startButton.rx.tap
+            .map { ViewReactor.Action.startButtonTapped }
+            .bind(to: reactor.action)
+            .disposed(by: disposeBag)
+        
+        resetButton.rx.tap
+            .map { ViewReactor.Action.resetButtonTapped }
+            .bind(to: reactor.action)
+            .disposed(by: disposeBag)
+        
+    }
+    
+    private func bindState(_ reactor: ViewReactor) {
+        reactor.state
+            .map { $0.gameState }
+            .asObservable()
+            .distinctUntilChanged()
+            .withUnretained(self)
+            .subscribe(onNext: { owner, state in
+                switch state {
+                case .start:
+                    owner.startAnimation()
+                case .reset:
+                    owner.resetAnimation()
+                default:
+                    break
+                }
+            }).disposed(by: disposeBag)
+    }
+}
