@@ -16,10 +16,10 @@ class ViewController: UIViewController, ReactorKit.View {
 
     var disposeBag = DisposeBag()
     var reactor: ViewReactor?
-
-    private var animator: UIViewPropertyAnimator?
+    private var wordItems: [WordItem]?
     
-    private let wordView = WordView(text: "apple")
+//    private let wordView = WordView(text: "apple")
+//    private let wordViews: [WordView]?
     
     private let wordLanes = UIView().then {
         $0.backgroundColor = .lightGray
@@ -57,20 +57,31 @@ class ViewController: UIViewController, ReactorKit.View {
     override func viewDidLoad() {
         super.viewDidLoad()
         
+        setupWordViews(["apple", "banana"]) // should be called first
         addSubviews()
         setupConstraints()
         setupAnimation()
-        setupTapGesture(to: wordView)
+        wordItems?.map { $0.wordView }.forEach {
+            setupTapGesture(to: $0)
+        }
         
         reactor = ViewReactor()
         guard let reactor = reactor else { return }
         bind(reactor: reactor)
     }
-
-
 }
 
 extension ViewController {
+    private func setupWordViews(_ words: [String]) {
+        wordItems = words.map { word in
+            WordItem(
+                text: word,
+                wordView: WordView(text: word),
+                animator: nil
+            )
+        }
+    }
+    
     private func addSubviews() {
         [
             wordLanes,
@@ -83,9 +94,7 @@ extension ViewController {
         ]
             .forEach { view.addSubview($0) }
         
-        [
-            wordView
-        ]
+        wordItems?.map { $0.wordView }
             .forEach { wordLanes.addSubview($0) }
         
         capturedWordsBox.addSubview(capturedWordsContent)
@@ -135,10 +144,17 @@ extension ViewController {
             $0.bottom.equalTo(startButton.snp.bottom)
         }
         
-        // set up wordLanes
-        wordView.snp.makeConstraints {
-            $0.top.leading.equalToSuperview()
-        }
+        // set up subviews of `wordLanes`
+        var previousWordView: UIView?
+        wordItems?.map { $0.wordView } // wordViews
+            .forEach { wordView in
+                let top = previousWordView?.snp.bottom ?? wordLanes.snp.top
+                wordView.snp.makeConstraints {
+                    $0.top.equalTo(top)
+                    $0.leading.equalToSuperview()
+                }
+                previousWordView = wordView
+            }
         
         // set up wordsContent UIStackView
         capturedWordsContent.snp.makeConstraints {
@@ -155,60 +171,98 @@ extension ViewController {
 // MARK: - Animations
 extension ViewController {
     private func setupAnimation() {
-        animator = UIViewPropertyAnimator(duration: 2.0/*0.5*/, curve: .linear, animations: { [weak self] in
+        for (i, wordItem) in (wordItems ?? []).enumerated() {
+            let animator = setupAnimation(of: wordItem.wordView)
+            wordItems?[i].animator = animator
+        }
+    }
+    
+    private func setupAnimation(of wordView: WordView) -> UIViewPropertyAnimator {
+        let animator = UIViewPropertyAnimator(duration: 2.0/*0.5*/, curve: .linear, animations: {  [weak self] in
             guard let self = self else { return }
-            self.wordView.snp.remakeConstraints {
-                $0.top.equalToSuperview()
+            print("EXECUTE ANIMATION")
+            let index = wordItems?.firstIndex(where: { $0.wordView == wordView}) ?? -1
+            var top = wordView.superview?.snp.top
+            if index > 0 {
+                top = wordItems?[index-1].wordView.snp.bottom
+            }
+            guard let top = top else { return }
+            
+            wordView.snp.remakeConstraints {
+                $0.top.equalTo(top)
                 $0.trailing.equalToSuperview()
             }
-            self.wordView.superview?.layoutIfNeeded() // 변경된 레이아웃 즉시 적용
+            wordView.superview?.layoutIfNeeded() // 변경된 레이아웃 즉시 적용
             
         })
         
-        animator?.addCompletion { [weak self] position in
+        animator.addCompletion { [weak self] position in
             guard let self = self else { return }
             switch position {
             case .start:
                 print("애니메이션이 시작 지점에서 종료되었습니다.")
             case .end:
-                self.reactor?.action.onNext(.missed("apple")) // FIXME: "apple"
+                guard let text = wordItems?.filter({ $0.wordView == wordView }).first?.text else { return }
+                self.reactor?.action.onNext(.missed(text))
             case .current:
                 print("애니메이션이 중간 지점에서 종료되었습니다.")
             @unknown default:
                 print("알 수 없는 종료 상태")
             }
         }
+        
+        return animator
     }
     
-    private func startAnimation() {
-        animator?.startAnimation()
+
+
+    
+    private func startAnimations() {
+        wordItems?.map { $0.animator }.forEach { $0?.startAnimation() }
+    }
+    
+    private func stopAnimations() {
+        wordItems?.map { $0.animator }.forEach { $0?.stopAnimation(true) }
+    }
+    
+    private func finishAnimations() {
+        wordItems?.map { $0.animator }.forEach { $0?.finishAnimation(at: .start) }
     }
     
     /// Reset animation and manage UIs
     // TODO: 개선 가능(기능별 함수 분리)
-    private func resetAnimation() {
+    private func resetAnimations() {
         // FIXME: 처음에 reset 눌렀을 때 에러나지 않도록
 //        guard [.active, .stopped].contains(animator?.state) else { return }
         
         // 1. 애니메이션 정지 및 초기화
-        animator?.stopAnimation(true)
-        animator?.finishAnimation(at: .start) // 애니메이션의 처음 상태로 되돌림
+        stopAnimations()
+        finishAnimations() // 애니메이션의 처음 상태로 되돌림
         
         // 2. 원래 위치로 리셋
-        wordView.snp.remakeConstraints {
-            $0.top.leading.equalToSuperview()
-        }
-        wordView.isHidden = false
+        var previousWordView: UIView?
+        wordItems?.map { $0.wordView } // wordViews
+            .forEach { wordView in
+                let top = previousWordView?.snp.bottom ?? wordLanes.snp.top
+                wordView.snp.remakeConstraints {
+                    $0.top.equalTo(top)
+                    $0.leading.equalToSuperview()
+                }
+                previousWordView = wordView
+                
+                wordView.isHidden = false
+            }
+        
         
         // 3. 새로운 애니메이션을 다시 설정
         setupAnimation()
     }
     
     /// Stops animation and emit an action `captured`
-    private func stopAnimation(_ gesture: UITapGestureRecognizer) {
-        // TODO: 적용할 animator 특정하기
-        animator?.stopAnimation(true) // 애니메이션 즉시 중단
-        animator?.finishAnimation(at: .current) // 현재 상태에서 멈춤 FIXME: 없어지도록
+    private func stopAnimation(_ animator: UIViewPropertyAnimator?) {
+        guard let animator = animator else { return }
+        animator.stopAnimation(true) // 애니메이션 즉시 중단
+        animator.finishAnimation(at: .current) // 현재 상태에서 멈춤
     }
 }
 
@@ -223,10 +277,12 @@ extension ViewController {
         guard let tappedWordView = gesture.view as? WordView else { return }
 
         // 1. Stop animation
-        stopAnimation(gesture)
+        let tappedwordItem = wordItems?.filter { $0.wordView == tappedWordView }.first
+        let animator = tappedwordItem?.animator
+        stopAnimation(animator)
         
         // 2. Manage views - hide or remove wordView from its superview
-        wordView.isHidden = true
+        tappedWordView.isHidden = true
         
         // Emit an action `captured`
         reactor?.action.onNext(.captured(tappedWordView.text))
@@ -263,9 +319,9 @@ extension ViewController {
             .subscribe(onNext: { owner, state in
                 switch state {
                 case .start:
-                    owner.startAnimation()
+                    owner.startAnimations()
                 case .reset:
-                    owner.resetAnimation()
+                    owner.resetAnimations()
                     owner.resetWordsBox()
                 default:
                     break
