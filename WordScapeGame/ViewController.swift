@@ -34,6 +34,9 @@ class ViewController: UIViewController, ReactorKit.View {
     private let capturedWordsBox = UIView().then {
         $0.backgroundColor = .blue.withAlphaComponent(0.5)
     }
+    private let capturedWordsContent = UIStackView().then {
+        $0.axis = .vertical
+    }
     
     private let missedWordsBox = UIView().then {
         $0.backgroundColor = .red.withAlphaComponent(0.5)
@@ -85,6 +88,7 @@ extension ViewController {
         ]
             .forEach { wordLanes.addSubview($0) }
         
+        capturedWordsBox.addSubview(capturedWordsContent)
         missedWordsBox.addSubview(missedWordsContent)
     }
     
@@ -136,6 +140,11 @@ extension ViewController {
             $0.top.leading.equalToSuperview()
         }
         
+        // set up wordsContent UIStackView
+        capturedWordsContent.snp.makeConstraints {
+            $0.top.leading.trailing.equalToSuperview()
+            $0.bottom.lessThanOrEqualToSuperview()
+        }
         missedWordsContent.snp.makeConstraints {
             $0.top.leading.trailing.equalToSuperview()
             $0.bottom.lessThanOrEqualToSuperview()
@@ -175,6 +184,8 @@ extension ViewController {
         animator?.startAnimation()
     }
     
+    /// Reset animation and manage UIs
+    // TODO: 개선 가능(기능별 함수 분리)
     private func resetAnimation() {
         // FIXME: 처음에 reset 눌렀을 때 에러나지 않도록
 //        guard [.active, .stopped].contains(animator?.state) else { return }
@@ -187,32 +198,38 @@ extension ViewController {
         wordView.snp.remakeConstraints {
             $0.top.leading.equalToSuperview()
         }
+        wordView.isHidden = false
         
         // 3. 새로운 애니메이션을 다시 설정
         setupAnimation()
     }
     
-    @objc private func cancelAnimation(_ gesture: UITapGestureRecognizer) {
-        guard let tappedWordView = gesture.view as? WordView else { return }
-        
+    /// Stops animation and emit an action `captured`
+    private func stopAnimation(_ gesture: UITapGestureRecognizer) {
+        // TODO: 적용할 animator 특정하기
         animator?.stopAnimation(true) // 애니메이션 즉시 중단
         animator?.finishAnimation(at: .current) // 현재 상태에서 멈춤 FIXME: 없어지도록
-        
-        // 원래 위치로 리셋
-        wordView.snp.remakeConstraints {
-            $0.top.leading.equalToSuperview()
-        }
-        
-        reactor?.action.onNext(.captured(tappedWordView.text))
-        wordView.superview?.layoutIfNeeded()
     }
 }
 
 
 extension ViewController {
     private func setupTapGesture(to wordView: UIView) {
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(cancelAnimation(_:)))
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(captureWord(_:)))
         wordView.addGestureRecognizer(tapGesture)
+    }
+    
+    @objc private func captureWord(_ gesture: UITapGestureRecognizer) {
+        guard let tappedWordView = gesture.view as? WordView else { return }
+
+        // 1. Stop animation
+        stopAnimation(gesture)
+        
+        // 2. Manage views - hide or remove wordView from its superview
+        wordView.isHidden = true
+        
+        // Emit an action `captured`
+        reactor?.action.onNext(.captured(tappedWordView.text))
     }
 }
 
@@ -249,7 +266,7 @@ extension ViewController {
                     owner.startAnimation()
                 case .reset:
                     owner.resetAnimation()
-                    owner.resetMissedWords()
+                    owner.resetWordsBox()
                 default:
                     break
                 }
@@ -268,8 +285,7 @@ extension ViewController {
             .asObservable()
             .withUnretained(self)
             .subscribe(onNext: { owner, word in
-//                owner.addCapturedWord(word)
-                print(word)
+                owner.addCapturedWord(word)
             }).disposed(by: disposeBag)
     }
 }
@@ -277,20 +293,37 @@ extension ViewController {
 
 // MARK: - Manage boxes
 extension ViewController {
-    private func resetMissedWords() {
-        guard !missedWordsContent.arrangedSubviews.isEmpty else { return }
-        missedWordsContent.arrangedSubviews.forEach {
-            missedWordsContent.removeArrangedSubview($0)
-            $0.removeFromSuperview()
+    private func resetWordsBox() {
+        if !capturedWordsContent.arrangedSubviews.isEmpty {
+            capturedWordsContent.arrangedSubviews.forEach {
+                capturedWordsContent.removeArrangedSubview($0)
+                $0.removeFromSuperview()
+            }
         }
+        if !missedWordsContent.arrangedSubviews.isEmpty {
+            missedWordsContent.arrangedSubviews.forEach {
+                missedWordsContent.removeArrangedSubview($0)
+                $0.removeFromSuperview()
+            }
+        }
+        
     }
     
+    private func addCapturedWord(_ word: String) {
+        let label = UILabel().then {
+            $0.text = word
+        }
+        
+        capturedWordsContent.addArrangedSubview(label)
+        print("capturedWord: \(word)")
+    }
     private func addMissedWord(_ word: String) {
         let label = UILabel().then {
             $0.text = word
         }
         
         missedWordsContent.addArrangedSubview(label)
-        print(word)
+        print("missedWord: \(word)")
     }
+
 }
