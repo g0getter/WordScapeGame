@@ -18,9 +18,6 @@ class ViewController: UIViewController, ReactorKit.View {
     var reactor: ViewReactor?
     private var wordItems: [WordItem]?
     
-//    private let wordView = WordView(text: "apple")
-//    private let wordViews: [WordView]?
-    
     private let wordLanes = UIView().then {
         $0.backgroundColor = .lightGray
     }
@@ -57,7 +54,7 @@ class ViewController: UIViewController, ReactorKit.View {
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        setupWordViews(["apple", "banana"]) // should be called first
+        setupWordViews(["apple", "banana", "cherry"]) // should be called first
         addSubviews()
         setupConstraints()
         setupAnimation()
@@ -74,7 +71,7 @@ class ViewController: UIViewController, ReactorKit.View {
 extension ViewController {
     private func setupWordViews(_ words: [String]) {
         wordItems = words.map { word in
-            WordItem(
+            return WordItem(
                 text: word,
                 wordView: WordView(text: word),
                 animator: nil
@@ -178,9 +175,11 @@ extension ViewController {
     }
     
     private func setupAnimation(of wordView: WordView) -> UIViewPropertyAnimator {
-        let animator = UIViewPropertyAnimator(duration: 2.0/*0.5*/, curve: .linear, animations: {  [weak self] in
+        let duration = Double.random(in: 0.5...2.5)
+        print("duration:\(duration)")
+        let animator = UIViewPropertyAnimator(duration: duration, curve: .linear, animations: {  [weak self] in
             guard let self = self else { return }
-            print("EXECUTE ANIMATION")
+            print("EXECUTE ANIMATION: \(wordView.text)")
             let index = wordItems?.firstIndex(where: { $0.wordView == wordView}) ?? -1
             var top = wordView.superview?.snp.top
             if index > 0 {
@@ -199,15 +198,11 @@ extension ViewController {
         animator.addCompletion { [weak self] position in
             guard let self = self else { return }
             switch position {
-            case .start:
-                print("애니메이션이 시작 지점에서 종료되었습니다.")
             case .end:
                 guard let text = wordItems?.filter({ $0.wordView == wordView }).first?.text else { return }
                 self.reactor?.action.onNext(.missed(text))
-            case .current:
-                print("애니메이션이 중간 지점에서 종료되었습니다.")
-            @unknown default:
-                print("알 수 없는 종료 상태")
+            default:
+                break
             }
         }
         
@@ -226,15 +221,17 @@ extension ViewController {
     }
     
     private func finishAnimations() {
-        wordItems?.map { $0.animator }.forEach { $0?.finishAnimation(at: .start) }
+        wordItems?.map { $0.animator }.forEach {
+            if [.active, .stopped].contains($0?.state) {
+                $0?.finishAnimation(at: .start)
+            }
+        }
     }
     
     /// Reset animation and manage UIs
     // TODO: 개선 가능(기능별 함수 분리)
     private func resetAnimations() {
-        // FIXME: 처음에 reset 눌렀을 때 에러나지 않도록
-//        guard [.active, .stopped].contains(animator?.state) else { return }
-        
+            
         // 1. 애니메이션 정지 및 초기화
         stopAnimations()
         finishAnimations() // 애니메이션의 처음 상태로 되돌림
@@ -253,20 +250,19 @@ extension ViewController {
                 wordView.isHidden = false
             }
         
-        
         // 3. 새로운 애니메이션을 다시 설정
         setupAnimation()
     }
     
     /// Stops animation and emit an action `captured`
-    private func stopAnimation(_ animator: UIViewPropertyAnimator?) {
+    private func stopAnimation(of animator: UIViewPropertyAnimator?) {
         guard let animator = animator else { return }
         animator.stopAnimation(true) // 애니메이션 즉시 중단
         animator.finishAnimation(at: .current) // 현재 상태에서 멈춤
     }
 }
 
-
+// TapGesture
 extension ViewController {
     private func setupTapGesture(to wordView: UIView) {
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(captureWord(_:)))
@@ -279,13 +275,25 @@ extension ViewController {
         // 1. Stop animation
         let tappedwordItem = wordItems?.filter { $0.wordView == tappedWordView }.first
         let animator = tappedwordItem?.animator
-        stopAnimation(animator)
+        stopAnimation(of: animator)
         
         // 2. Manage views - hide or remove wordView from its superview
         tappedWordView.isHidden = true
         
         // Emit an action `captured`
         reactor?.action.onNext(.captured(tappedWordView.text))
+    }
+    
+    private func setUserInteraction(of wordView: WordView, asActive isActive: Bool) {
+        guard let wordItem = wordItems?.filter({ $0.wordView == wordView }).first else { return }
+        setUserInteraction(of: wordItem, asActive: isActive)
+    }
+    private func setUserInteraction(of word: String, asActive isActive: Bool) {
+        guard let wordItem = wordItems?.filter({ $0.text == word }).first else { return }
+        setUserInteraction(of: wordItem, asActive: isActive)
+    }
+    private func setUserInteraction(of wordItem: WordItem, asActive isActive: Bool) {
+        wordItem.wordView.isUserInteractionEnabled = isActive
     }
 }
 
@@ -318,13 +326,21 @@ extension ViewController {
             .withUnretained(self)
             .subscribe(onNext: { owner, state in
                 switch state {
+                case .initial:
+                    owner.wordItems?.forEach {
+                        owner.setUserInteraction(of: $0, asActive: false)
+                    }
                 case .start:
                     owner.startAnimations()
+                    owner.wordItems?.forEach {
+                        owner.setUserInteraction(of: $0, asActive: true)
+                    }
                 case .reset:
                     owner.resetAnimations()
+                    owner.wordItems?.forEach {
+                        owner.setUserInteraction(of: $0, asActive: false)
+                    }
                     owner.resetWordsBox()
-                default:
-                    break
                 }
             }).disposed(by: disposeBag)
         
@@ -334,6 +350,7 @@ extension ViewController {
             .withUnretained(self)
             .subscribe(onNext: { owner, word in
                 owner.addMissedWord(word)
+                owner.setUserInteraction(of: word, asActive: false)
             }).disposed(by: disposeBag)
         
         reactor.state
