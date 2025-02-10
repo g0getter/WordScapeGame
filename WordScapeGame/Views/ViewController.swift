@@ -209,9 +209,6 @@ extension ViewController {
         return animator
     }
     
-
-
-    
     private func startAnimations() {
         wordItems?.map { $0.animator }.forEach { $0?.startAnimation() }
     }
@@ -220,21 +217,12 @@ extension ViewController {
         wordItems?.map { $0.animator }.forEach { $0?.stopAnimation(true) }
     }
     
-    private func finishAnimations() {
-        wordItems?.map { $0.animator }.forEach {
-            if [.active, .stopped].contains($0?.state) {
-                $0?.finishAnimation(at: .start)
-            }
-        }
-    }
-    
     /// Reset animation and manage UIs
     // TODO: 개선 가능(기능별 함수 분리)
     private func resetAnimations() {
             
-        // 1. 애니메이션 정지 및 초기화
+        // 1. 애니메이션 정지
         stopAnimations()
-        finishAnimations() // 애니메이션의 처음 상태로 되돌림
         
         // 2. 원래 위치로 리셋
         var previousWordView: UIView?
@@ -258,7 +246,6 @@ extension ViewController {
     private func stopAnimation(of animator: UIViewPropertyAnimator?) {
         guard let animator = animator else { return }
         animator.stopAnimation(true) // 애니메이션 즉시 중단
-        animator.finishAnimation(at: .current) // 현재 상태에서 멈춤
     }
 }
 
