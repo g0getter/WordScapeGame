@@ -249,7 +249,7 @@ extension ViewController {
     }
 }
 
-// TapGesture
+// MARK: - TapGesture, isUserInteractionEnabled
 extension ViewController {
     private func setupTapGesture(to wordView: UIView) {
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(captureWord(_:)))
@@ -271,20 +271,17 @@ extension ViewController {
         reactor?.action.onNext(.captured(tappedWordView.text))
     }
     
-    private func setUserInteraction(of wordView: WordView, asActive isActive: Bool) {
-        guard let wordItem = wordItems?.filter({ $0.wordView == wordView }).first else { return }
-        setUserInteraction(of: wordItem, asActive: isActive)
+    private func enableInteraction(for wordItem: WordItem, isEnabled: Bool) {
+        wordItem.wordView.isUserInteractionEnabled = isEnabled
     }
-    private func setUserInteraction(of word: String, asActive isActive: Bool) {
-        guard let wordItem = wordItems?.filter({ $0.text == word }).first else { return }
-        setUserInteraction(of: wordItem, asActive: isActive)
+    
+    private func enableInteractionForAllWords(isEnabled: Bool) {
+        wordItems?.map { $0.wordView }.forEach { $0.isUserInteractionEnabled = isEnabled }
     }
-    private func setUserInteraction(of wordItem: WordItem, asActive isActive: Bool) {
-        wordItem.wordView.isUserInteractionEnabled = isActive
-    }
+    
 }
 
-// Reactor
+// MARK: - Reactor
 extension ViewController {
     func bind(reactor: ViewReactor) {
         bindAction(reactor)
@@ -314,19 +311,13 @@ extension ViewController {
             .subscribe(onNext: { owner, state in
                 switch state {
                 case .initial:
-                    owner.wordItems?.forEach {
-                        owner.setUserInteraction(of: $0, asActive: false)
-                    }
+                    owner.enableInteractionForAllWords(isEnabled: false)
                 case .start:
                     owner.startAnimations()
-                    owner.wordItems?.forEach {
-                        owner.setUserInteraction(of: $0, asActive: true)
-                    }
+                    owner.enableInteractionForAllWords(isEnabled: true)
                 case .reset:
                     owner.resetAnimations()
-                    owner.wordItems?.forEach {
-                        owner.setUserInteraction(of: $0, asActive: false)
-                    }
+                    owner.enableInteractionForAllWords(isEnabled: false)
                     owner.resetWordsBox()
                 }
             }).disposed(by: disposeBag)
@@ -337,7 +328,9 @@ extension ViewController {
             .withUnretained(self)
             .subscribe(onNext: { owner, word in
                 owner.addMissedWord(word)
-                owner.setUserInteraction(of: word, asActive: false)
+                guard let wordItem = owner.wordItems?
+                    .filter({ $0.text == word }).first else { return }
+                owner.enableInteraction(for: wordItem, isEnabled: false)
             }).disposed(by: disposeBag)
         
         reactor.state
