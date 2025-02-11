@@ -28,7 +28,6 @@ class ViewReactor: Reactor {
     
     enum Mutation {
         case start
-//        case reset
         case initial
         case startOnlyInBoxes([String])
         case missed(String)
@@ -62,13 +61,6 @@ class ViewReactor: Reactor {
             default:
                 return Observable.just(Mutation.startOnlyInBoxes(wordsToRestart))
             }
-//            if currentState.gameState == .end {
-//                return Observable.just(Mutation.initial)
-//            } else if currentState.gameState == .initial {
-//                
-//            }
-//            return Observable.just(Mutation.reset)
-//            return Observable.just(Mutation.startOnlyInBoxes(wordsToRestart))
         case let .missed(word):
             missedWords.append(word)
             print("✅missed, \(capturedWords.count)+\(missedWords.count) AND \(words.count)")
@@ -100,12 +92,6 @@ class ViewReactor: Reactor {
         switch mutation {
         case .start:
             newState.gameState = .start
-//        case .reset:
-//            if state.gameState == .end {
-//                newState.gameState = .initial
-//            } else {
-//                newState.gameState = .startOnlyInBoxes(capturedWords+missedWords)
-//            }
         case .initial:
             newState.gameState = .initial
         case let .startOnlyInBoxes(words):
@@ -122,41 +108,6 @@ class ViewReactor: Reactor {
         
         return newState
     }
-    
-//    func mutate(action: Action) -> Observable<Mutation> {
-//        switch action {
-//        case .startButtonTapped:
-//            return Observable.just(Mutation.startButtonTapped)
-//        case .resetButtonTapped:
-//            return Observable.just(Mutation.resetButtonTapped)
-//        case let .missed(word):
-//            return Observable.just(Mutation.missed(word))
-//        case let .captured(word):
-//            return Observable.just(Mutation.captured(word))
-//        }
-//    }
-//    
-//    func reduce(state: State, mutation: Mutation) -> State {
-//        var newState = state
-//        newState.newCapturedWord = nil
-//        newState.newMissedWord = nil
-//        switch mutation {
-//        case .startButtonTapped:
-//            newState.gameState = .start
-//        case .resetButtonTapped:
-//            if state.gameState == .end {
-//                newState.gameState = .initial
-//            } else {
-//                newState.gameState = .start
-//            }
-//            newState.gameState = .reset
-//        case let .missed(word):
-//            newState.newMissedWord = word
-//        case let .captured(word):
-//            newState.newCapturedWord = word
-//        }
-//        return newState
-//    }
 }
 
 enum GameState: Equatable {
@@ -164,9 +115,8 @@ enum GameState: Equatable {
     case start
     /// starts words only in boxes
     case startOnlyInBoxes([String])
-//    case reset
     /// game is running, nothing to do
-    case running // TODO: 개선-mutate에서 마지막 단계로 대부분 추가하고,reset buttonTapped에서 default 대신 사용 가능할듯
+    case running // TODO: 개선-mutate에서 마지막 단계로 대부분 추가하고, resetButtonTapped에서 default 대신 사용 가능할듯
     case end
     
     static func == (lhs: GameState, rhs: GameState) -> Bool {
