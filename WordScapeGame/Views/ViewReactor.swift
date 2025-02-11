@@ -17,7 +17,7 @@ class ViewReactor: Reactor {
     
     let initialState = State(gameState: .initial)
     
-    // FIXME: OPTIMIZE VARS. INITIAL WORDS
+    // FIXME: Optimize words variables
     private let words: [Word]
     
     private var currentWords: [LaneType: [Word]] = [:]
@@ -27,14 +27,15 @@ class ViewReactor: Reactor {
     enum Action {
         case startButtonTapped
         case resetButtonTapped
+        /// `Word` is missed, animation is stopped
         case missed(Word)
         case captured(String)
     }
     
     enum Mutation {
+        case initial
         case startAll([Word])
         case start(Word)
-        case initial
         case emptyBoxes([Word])
         case missed(Word)
         case captured(Word)
@@ -55,6 +56,7 @@ class ViewReactor: Reactor {
                 return Observable.just(Mutation.startAll(wordsToStart))
             }
             return Observable.empty()
+            
         case .resetButtonTapped:
             let wordsToRestart = capturedWords + missedWords
             capturedWords = []
@@ -64,35 +66,33 @@ class ViewReactor: Reactor {
             case .initial:
                 return Observable.empty()
             case .end:
+                // fill out current words, sort them properly and set to initial state
                 currentWords = Dictionary(grouping: wordsToRestart, by: { $0.laneType })
                     .mapValues { $0.sorted { $0.priorityInLane < $1.priorityInLane } }
                 return Observable.just(Mutation.initial)
-            default:
+            default: // is still running
                 // empty 2 boxes and fill currentWords
                 wordsToRestart.forEach {
                     currentWords[$0.laneType]?.append($0)
                 }
                 
-                // sort
-                for (laneType, words) in currentWords {
-                    currentWords[laneType] = words.sorted { $0.priorityInLane < $1.priorityInLane }
-                }
                 return Observable.just(Mutation.emptyBoxes(wordsToRestart))
             }
+            
         case let .missed(word):
             missedWords.append(word)
             currentWords[word.laneType]?.removeAll(where: { $0 == word }) // remove
-            // start next one or end the game
+            // 3 cases
             
-            // i) start next one
+            // i) if there are remaining words to animate, start next one
             if let nextWord = currentWords[word.laneType]?.first {
                 return Observable.concat([
-                    Observable.just(Mutation.start(nextWord)),
-                    Observable.just(Mutation.missed(word))
-                    ])
+                    Observable.just(Mutation.missed(word)),
+                    Observable.just(Mutation.start(nextWord))
+                ])
             }
             
-            // ii) end the game
+            // ii) if it is the last word, end the game
             print("✅missed \(word.text), \(capturedWords.count)+\(missedWords.count) AND \(words.count)")
             if capturedWords.count + missedWords.count == words.count {
                 return Observable.concat([
@@ -101,7 +101,7 @@ class ViewReactor: Reactor {
                 ])
             }
             
-            // iii) do nothing(wait for the other lanes)
+            // iii) do nothing(wait for the other lanes to terminate)
             return Observable.concat([
                 Observable.just(Mutation.missed(word)),
             ])
@@ -110,7 +110,7 @@ class ViewReactor: Reactor {
             guard let word = words.first(where: { $0.text == wordText }) else {
                 return Observable.empty()
             }
-            capturedWords.append(word) // TODO: 필요 없을지도
+            capturedWords.append(word)
             currentWords[word.laneType]?.removeAll(where: { $0 == word }) // remove
             
             // i) start next one
@@ -128,7 +128,8 @@ class ViewReactor: Reactor {
                     Observable.just(Mutation.ended)
                 ])
             }
-            // iii) do nothing(wait for the other lanes)
+            
+            // iii) do nothing(wait for the other lanes to terminate)
             return Observable.just(Mutation.captured(word))
         }
     }
@@ -166,7 +167,7 @@ enum GameState: Equatable {
     case start(Word)
     case emptyBoxes([Word])
     /// game is running, nothing to do
-    case running // TODO: 개선-mutate에서 마지막 단계로 대부분 추가하고, resetButtonTapped에서 default 대신 사용 가능할듯
+    case running
     case end
     
     static func == (lhs: GameState, rhs: GameState) -> Bool {

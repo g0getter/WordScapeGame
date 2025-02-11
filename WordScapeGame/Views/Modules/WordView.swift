@@ -8,6 +8,7 @@
 import UIKit
 import SnapKit
 
+/// Yellow-colored `UILabel`
 class WordView: UIView {
     let text: String
     

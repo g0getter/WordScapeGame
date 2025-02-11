@@ -17,7 +17,6 @@ class ViewController: UIViewController, ReactorKit.View {
     var disposeBag = DisposeBag()
     var reactor: ViewReactor?
     
-    // FIXME: init에서 입력 혹은 reactor에서
     var initialWords: [Word] = []
     var wordsWithAnimators: [String: UIViewPropertyAnimator] = [:]
     var wordsWithWordViews: [String: WordView] = [:]
@@ -87,6 +86,7 @@ class ViewController: UIViewController, ReactorKit.View {
     }
 }
 
+// MARK: - UI setting
 extension ViewController {
     
     private func setupWordViews(_ words: [Word]) {
@@ -156,7 +156,7 @@ extension ViewController {
         }
         
         // set up subviews of `wordLanes`
-        // wordViews constraints - inside `remakeWordViews(of:)`
+        // (!) wordViews constraints - inside `remakeWordViews(of:)`
         
         // set up wordsContent UIStackView
         capturedWordsContent.snp.makeConstraints {
@@ -199,14 +199,12 @@ extension ViewController {
             }
             wordView.superview?.layoutIfNeeded() // apply the updated layout immediately
         })
-                                              
 
-        // == animator.stopAnimation(true) -> startAnimation() 해도 동작X
         animator.addCompletion { [weak self] (position: UIViewAnimatingPosition) in
             guard let self = self else { return }
             switch position {
             case .end:
-                self.reactor?.action.onNext(.missed(word))
+                self.reactor?.action.onNext(.missed(word)) // emits `.missed` after the animation is ended
             default:
                 break
             }
@@ -224,11 +222,6 @@ extension ViewController {
         }
     }
     
-    private func stopAnimation(of animator: UIViewPropertyAnimator?) {
-        guard let animator = animator else { return }
-        animator.stopAnimation(true) // stop animation and change state to [inactive]
-
-    }
 }
 
 // MARK: - TapGesture, isUserInteractionEnabled
@@ -242,9 +235,9 @@ extension ViewController {
         guard let tappedWordView = gesture.view as? WordView else { return }
 
         // 1. Stop animation
-        stopAnimation(of: wordsWithAnimators[tappedWordView.text])
+        wordsWithAnimators[tappedWordView.text]?.stopAnimation(true) // stop animation and change state to [inactive]
         
-        // 2. Manage views - hide or remove wordView from its superview
+        // 2. Manage views - hide from its superview
         tappedWordView.isHidden = true
         
         // 3. Emit an action `captured`
@@ -262,7 +255,7 @@ extension ViewController {
     
 }
 
-// MARK: - Reactor
+// MARK: - Reactor Binding
 extension ViewController {
     func bind(reactor: ViewReactor) {
         bindAction(reactor)
@@ -292,7 +285,7 @@ extension ViewController {
                 print(state)
                 switch state {
                 case .initial:
-                    // TODO: start처럼 initial 수정
+                    // TODO: .initial(words)
                     owner.remakeWordViews(of: owner.initialWords)
                     owner.enableInteractionForAllWords(isEnabled: false)
                     owner.resetWordsBox(captured: true, missed: true)
