@@ -16,8 +16,11 @@ class ViewController: UIViewController, ReactorKit.View {
 
     var disposeBag = DisposeBag()
     var reactor: ViewReactor?
-    var wordViewsWithAnimators: [String: WordViewWithAnimator] = [:] // word(String): WordViewWithAnimator
-    var wordsInOrder: [String] = [] // to ensure the order of dictionary, because of the order consistency between `setupConstraints` and `setupAnimation`
+    
+    // FIXME: init에서 입력 혹은 reactor에서
+    var initialWords: [Word] = []
+    var wordsWithAnimators: [String: UIViewPropertyAnimator] = [:]
+    var wordsWithWordViews: [String: WordView] = [:]
     
     private let wordLanes = UIView().then {
         $0.backgroundColor = .lightGray
@@ -55,31 +58,40 @@ class ViewController: UIViewController, ReactorKit.View {
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        let words = ["apple", "banana", "cherry"]
+        // TODO: 자동화
+        initialWords = [
+            Word(text: "apple", laneType: .laneA, priorityInLane: 0, topOffset: 0),
+            Word(text: "apricot", laneType: .laneA, priorityInLane: 1, topOffset: 30),
+            
+            Word(text: "banana", laneType: .laneB, priorityInLane: 0, topOffset: 90),
+            Word(text: "bluberry", laneType: .laneB, priorityInLane: 1, topOffset: 120),
+            
+            Word(text: "cherry", laneType: .laneC, priorityInLane: 0, topOffset: 180),
+            Word(text: "coconut", laneType: .laneC, priorityInLane: 1, topOffset: 210),
+        ]
         
-        setupWordViewsWithAnimators(words) // should be called first
+        setupWordViews(initialWords) // should be called first
         
         // UIs
         addSubviews()
         setupConstraints()
         
         // TapGestures
-        wordViewsWithAnimators.values.map { $0.wordView }.forEach {
+        wordsWithWordViews.values.forEach {
             setupTapGesture(to: $0)
         }
         
-        reactor = ViewReactor(words: words)
+        reactor = ViewReactor(words: initialWords)
         guard let reactor = reactor else { return }
         bind(reactor: reactor)
     }
 }
 
 extension ViewController {
-    private func setupWordViewsWithAnimators(_ words: [String]) {
-        wordsInOrder = words
+    
+    private func setupWordViews(_ words: [Word]) {
         words.forEach { word in
-            let wordViewWithAnimator = WordViewWithAnimator(wordView: WordView(text: word))
-            wordViewsWithAnimators[word] = wordViewWithAnimator
+            wordsWithWordViews[word.text] = WordView(text: word.text)
         }
     }
     
@@ -94,9 +106,7 @@ extension ViewController {
             resetButton
         ]
             .forEach { view.addSubview($0) }
-        
-        wordViewsWithAnimators.values.map { $0.wordView }
-            .forEach { wordLanes.addSubview($0) }
+        wordsWithWordViews.values.forEach { wordLanes.addSubview($0) }
         
         capturedWordsBox.addSubview(capturedWordsContent)
         missedWordsBox.addSubview(missedWordsContent)
@@ -160,26 +170,15 @@ extension ViewController {
     }
     
     /// (Re)makes constraints of `WordView`s
-    private func remakeWordViews(of words: [String]) {
-        
-        let wordViews = words.map { wordViewsWithAnimators[$0] }
-            .compactMap { $0?.wordView }
-        
-        wordViews.forEach { wordView in
-            let wordViewsInOrder = wordsInOrder.compactMap { self.wordViewsWithAnimators[$0]?.wordView }
-            let index = wordViewsInOrder.firstIndex(of: wordView) ?? -1
-            var top = wordView.superview?.snp.top
-            if index > 0 {
-                top = wordViewsInOrder[index-1].snp.bottom
-            }
-            guard let top = top else { return }
-            
+    private func remakeWordViews(of words: [Word]) {
+        words.forEach { word in
+            guard let wordView = wordsWithWordViews[word.text] else { return }
             wordView.snp.remakeConstraints {
-                $0.top.equalTo(top)
+                $0.top.equalToSuperview().offset(word.topOffset)
                 $0.leading.equalToSuperview()
+                $0.height.equalTo(30)
             }
-//            wordView.superview?.layoutIfNeeded()
-
+            
             wordView.isHidden = false
         }
     }
@@ -187,47 +186,26 @@ extension ViewController {
 
 // MARK: - Animations
 extension ViewController {
-    private func setupAnimationForAll() {
-        for dict in wordViewsWithAnimators {
-            let animator = setupAnimation(of: dict.key)
-            wordViewsWithAnimators[dict.key]?.animator = animator
-        }
-    }
     
-    private func setupAnimation(of word: String) -> UIViewPropertyAnimator? {
-        guard let wordView = wordViewsWithAnimators[word]?.wordView else { return nil }
+    private func setupAnimation(of word: Word) -> UIViewPropertyAnimator? {
         
         let duration = Double.random(in: 0.5...2.5)
-        
         let animator = UIViewPropertyAnimator(duration: duration, curve: .linear, animations: {  [weak self] in
             guard let self = self else { return }
-            
-            let wordViewsInOrder = wordsInOrder.compactMap { self.wordViewsWithAnimators[$0]?.wordView }
-            let index = wordViewsInOrder.firstIndex(of: wordView) ?? -1
-            var top = wordView.superview?.snp.top
-            if index > 0 {
-                top = wordViewsInOrder[index-1].snp.bottom
-            }
-            guard let top = top else { return }
-            
+            guard let wordView = wordsWithWordViews[word.text] else { return }
             wordView.snp.remakeConstraints {
-                $0.top.equalTo(top)
+                $0.top.equalTo(word.topOffset)
                 $0.trailing.equalToSuperview()
             }
             wordView.superview?.layoutIfNeeded() // apply the updated layout immediately
-            
         })
+                                              
 
         // == animator.stopAnimation(true) -> startAnimation() 해도 동작X
         animator.addCompletion { [weak self] (position: UIViewAnimatingPosition) in
             guard let self = self else { return }
             switch position {
             case .end:
-                guard let word =
-                        wordViewsWithAnimators
-                    .first(where:{
-                        $0.value.wordView == wordView
-                    })?.key else { return }
                 self.reactor?.action.onNext(.missed(word))
             default:
                 break
@@ -237,13 +215,13 @@ extension ViewController {
         return animator
     }
     
-    private func startAnimations(of words: [String]) {
-        words.compactMap { wordViewsWithAnimators[$0] }
-            .compactMap { $0.animator }
-            .forEach { animator in
-                print("Animator duration: \(animator?.duration ?? 0)")
-                animator?.startAnimation()
+    private func startAnimations(of words: [Word]) {
+        words.forEach { word in
+            wordsWithAnimators[word.text] = setupAnimation(of: word)
+            DispatchQueue.main.async { [weak self] in // start animation(UI) on a main thread
+                self?.wordsWithAnimators[word.text]?.startAnimation()
             }
+        }
     }
     
     private func stopAnimation(of animator: UIViewPropertyAnimator?) {
@@ -264,22 +242,21 @@ extension ViewController {
         guard let tappedWordView = gesture.view as? WordView else { return }
 
         // 1. Stop animation
-        guard let dict = wordViewsWithAnimators.first(where: { $0.value.wordView == tappedWordView }) else { return }
-        stopAnimation(of: dict.value.animator)
+        stopAnimation(of: wordsWithAnimators[tappedWordView.text])
         
         // 2. Manage views - hide or remove wordView from its superview
         tappedWordView.isHidden = true
         
         // 3. Emit an action `captured`
-        reactor?.action.onNext(.captured(dict.key))
+        reactor?.action.onNext(.captured(tappedWordView.text))
     }
     
-    private func enableInteraction(for word: String, isEnabled: Bool) {
-        wordViewsWithAnimators[word]?.wordView.isUserInteractionEnabled = isEnabled
+    private func enableInteraction(for word: Word, isEnabled: Bool) {
+        wordsWithWordViews[word.text]?.isUserInteractionEnabled = isEnabled
     }
     
     private func enableInteractionForAllWords(isEnabled: Bool) {
-        wordViewsWithAnimators.map { $0.value.wordView }
+        wordsWithWordViews.values
             .forEach { $0.isUserInteractionEnabled = isEnabled }
     }
     
@@ -315,32 +292,27 @@ extension ViewController {
                 print(state)
                 switch state {
                 case .initial:
-                    owner.remakeWordViews(of: owner.wordsInOrder)
+                    // TODO: start처럼 initial 수정
+                    owner.remakeWordViews(of: owner.initialWords)
                     owner.enableInteractionForAllWords(isEnabled: false)
-                    owner.setupAnimationForAll()
                     owner.resetWordsBox(captured: true, missed: true)
                     
-                case .start:
-                    owner.startAnimations(of: owner.wordsInOrder)
-                    owner.enableInteractionForAllWords(isEnabled: true)
+                case let .startAll(words):
+                    owner.startAnimations(of: words)
+                    words.forEach {
+                        owner.enableInteraction(for: $0, isEnabled: true)
+                    }
                     
-                case let .startOnlyInBoxes(words):
+                case let .start(word):
+                    owner.startAnimations(of: [word])
+                    owner.enableInteraction(for: word, isEnabled: true)
+                    
+                case let .emptyBoxes(words):
                     // 1. Empty captured words box
                     owner.resetWordsBox(captured: true, missed: true)
                     
-                    // 2. Restart wordViews immediately, while keeping others animated
+                    // 2. Remake wordViews
                     owner.remakeWordViews(of: words)
-                    owner.enableInteractionForAllWords(isEnabled: true)
-                    
-                    // Should setup animations again
-                    words.forEach { word in
-                            let animator = owner.setupAnimation(of: word)
-                            owner.wordViewsWithAnimators[word]?.animator = animator
-                        }
-                    
-                    DispatchQueue.main.async { // to ensure animations(UI) start on the main thread
-                        owner.startAnimations(of: words)
-                    }
                     
                 default: break
                 }
@@ -351,7 +323,7 @@ extension ViewController {
             .asObservable()
             .withUnretained(self)
             .subscribe(onNext: { owner, word in
-                owner.addMissedWord(word)
+                owner.addMissedWord(word.text)
                 owner.enableInteraction(for: word, isEnabled: false)
             }).disposed(by: disposeBag)
         
@@ -360,7 +332,8 @@ extension ViewController {
             .asObservable()
             .withUnretained(self)
             .subscribe(onNext: { owner, word in
-                owner.addCapturedWord(word)
+                owner.addCapturedWord(word.text)
+                owner.enableInteraction(for: word, isEnabled: false)
             }).disposed(by: disposeBag)
     }
 }
